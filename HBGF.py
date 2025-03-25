@@ -202,9 +202,56 @@ def measure_performance(data_label, y_pred):
     return acc
 
 
+def validate_pattern_discriminability(db, optimized_clusters, patterns):
+    """验证模式在不同簇中的分布情况"""
+    # 构建簇序列映射
+    cluster_sequences = {}
+    for cluster_id, data in optimized_clusters.items():
+        cluster_sequences[cluster_id] = [db[i] for i in data['sequences']]
+
+    # 构建模式到簇的映射
+    pattern_cluster_map = {}
+    for cluster_id, data in optimized_clusters.items():
+        for pattern_idx in data['patterns']:
+            pattern = tuple(patterns[pattern_idx])
+            pattern_cluster_map[pattern] = cluster_id
+
+    # 统计每个模式在各簇中的出现次数
+    pattern_distribution = {}
+    for pattern in pattern_cluster_map:
+        pattern_distribution[pattern] = {}
+        total_count = 0
+
+        # 检查每个簇
+        for cluster_id, seq_list in cluster_sequences.items():
+            count = 0
+            for seq in seq_list:
+                if is_subsequence(seq, pattern):
+                    count += 1
+            pattern_distribution[pattern][cluster_id] = {
+                'count': count,
+                'support': count / len(seq_list) if len(seq_list) > 0 else 0
+            }
+            total_count += count
+
+        # 计算主要簇判别性指标
+        home_cluster = pattern_cluster_map[pattern]
+        home_support = pattern_distribution[pattern][home_cluster]['support']
+        other_support = sum(v['support'] for cid, v in pattern_distribution[pattern].items()
+                            if cid != home_cluster) / (len(cluster_sequences) - 1) if len(cluster_sequences) > 1 else 0
+        discriminability = home_support - other_support
+
+        pattern_distribution[pattern]['metrics'] = {
+            'home_cluster': home_cluster,
+            'discriminability': discriminability,
+            'total_occurrence': total_count
+        }
+
+    return pattern_distribution
+
+
 def run_single_experiment(db, data_label, k):
     """单次实验运行"""
-
     all_kmers = get_all_kmers(db, 3)
 
     kmer_counter = Counter(all_kmers)
@@ -214,7 +261,7 @@ def run_single_experiment(db, data_label, k):
     candidate_kmers = filter_kmers_by_support(kmer_counter, min_support, max_support)
     # print(len(candidate_kmers))
     patterns = filter_by_edit_distance(candidate_kmers, 2, 3)
-    # print(len(patterns))
+    print(len(patterns))
 
 
     edges, pattern_count = build_bipartite_graph(db, patterns)
@@ -232,47 +279,60 @@ def run_single_experiment(db, data_label, k):
 
     # 计算评估指标
     acc = measure_performance(data_label, pred_label)
+    pattern_dist = validate_pattern_discriminability(db, optimized_clusters, patterns)
 
     return {
         'purity': acc[0],
         'nmi': acc[1],
         'f1': acc[2],
         'num_patterns': total_patterns,
-        'avg_length': avg_length
+        'avg_length': avg_length,
+        'pattern_analysis': {
+            'distributions': pattern_dist,
+            'avg_discriminability': np.mean([v['metrics']['discriminability'] for v in pattern_dist.values()]),
+            'min_discriminability': np.min([v['metrics']['discriminability'] for v in pattern_dist.values()]),
+            'max_discriminability': np.max([v['metrics']['discriminability'] for v in pattern_dist.values()])
+        }
     }
 
 if __name__ == '__main__':
     dataset = ['activity', 'aslbu', 'auslan2', 'context', 'epitope', 'gene', 'news',
                'pioneer', 'question', 'reuters', 'robot', 'skating', 'unix', 'webkb']
-    # dataset = ['activity']
+    dataset = ['webkb']
 
     for dataset_name in dataset:
-        # 加载数据集
         db, data_label, _, _ = datainput(f'RandomCluster/dataset/{dataset_name}.txt')
         true_cluster_num = len(set(data_label))
+        result = run_single_experiment(db, data_label, true_cluster_num)
 
-        # 运行10次实验
-        results = []
-        for exp_id in range(1):
-            result = run_single_experiment(db, data_label, true_cluster_num)
-            results.append(result)
-
-        # 计算平均指标
-        avg_metrics = {
-            'purity': np.mean([r['purity'] for r in results]),
-            'nmi': np.mean([r['nmi'] for r in results]),
-            'f1': np.mean([r['f1'] for r in results]),
-            'num_patterns': np.mean([r['num_patterns'] for r in results]),
-            'avg_length': np.mean([r['avg_length'] for r in results])
-        }
-
-        # 打印最终结果
+        # 直接输出单次实验结果
         print(f"[{dataset_name}]:")
-        print(f"Purity: {avg_metrics['purity']:.4f} ± {np.std([r['purity'] for r in results]):.4f}")
-        print(f"NMI: {avg_metrics['nmi']:.4f} ± {np.std([r['nmi'] for r in results]):.4f}")
-        print(f"F1-score: {avg_metrics['f1']:.4f} ± {np.std([r['f1'] for r in results]):.4f}")
-        print(f"平均模式数: {avg_metrics['num_patterns']:.1f} ± {np.std([r['num_patterns'] for r in results]):.1f}")
-        print(f"平均模式长度: {avg_metrics['avg_length']:.2f} ± {np.std([r['avg_length'] for r in results]):.2f}")
+        print(f"Purity: {result['purity']:.4f}")
+        print(f"NMI: {result['nmi']:.4f}")
+        print(f"F1-score: {result['f1']:.4f}")
+        print(f"模式数: {result['num_patterns']:.1f}")
+        print(f"平均模式长度: {result['avg_length']:.2f}")
+        print("=" * 80)
+
+        # 输出新增的判别性指标
+        print("\n模式判别性分析:")
+        print(f"平均判别性: {result['pattern_analysis']['avg_discriminability']:.2f}")
+        print(f"最小判别性: {result['pattern_analysis']['min_discriminability']:.2f}")
+        print(f"最大判别性: {result['pattern_analysis']['max_discriminability']:.2f}")
+
+        # 详细分布
+        print("模式分布:")
+        for i, (pattern, dist) in enumerate(result['pattern_analysis']['distributions'].items()):
+            print(f"模式 {i + 1}: {pattern}")
+            print(f"所属簇: {dist['metrics']['home_cluster']}")
+            print(f"总出现次数: {dist['metrics']['total_occurrence']}")
+            print("各簇支持度:")
+            for cid, vals in dist.items():
+                if cid == 'metrics':
+                    continue
+                print(f"  簇 {cid}: {vals['support']:.2f}")
+            print("-" * 40)
+
         print("=" * 80)
 
 
