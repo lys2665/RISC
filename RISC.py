@@ -7,12 +7,18 @@ from collections import Counter
 from metis import idx_t  # 从METIS库导入数据类型
 
 def is_subsequence(seq, pattern):
-    i, j = 0, 0
-    while i < len(seq) and j < len(pattern):
+    """检查seq是否包含pattern"""
+    n = len(seq)
+    m = len(pattern)
+    j = 0  # 用于遍历subsequence的指针
+    for i in range(n):
         if seq[i] == pattern[j]:
             j += 1
-        i += 1
-    return j == len(pattern)
+            if j == m:
+                return True
+        elif j > 0:
+            i -= 1  # 回溯到上一个与subsequence匹配的元素位置
+    return False
 
 
 def extract_kmers(seq, length):
@@ -286,12 +292,14 @@ def validate_pattern_discriminability(db, optimized_clusters, patterns):
     return results
 
 
-def run_single_experiment(db, data_label, k):
+def run_single_experiment(db, data_label, k, min_support = None, max_support = None):
     """单次实验运行"""
     patterns = []
     current_k = 8
-    min_support = 0.25 * len(db)
-    max_support = 0.7 * len(db)
+    if min_support is None:
+        min_support = 0.25 * len(db)  # 原固定值
+    if max_support is None:
+        max_support = 0.7 * len(db)   # 原固定值
     start_time = time.time()
     def check_coverage(patterns, db):
         if not patterns:
@@ -300,7 +308,8 @@ def run_single_experiment(db, data_label, k):
 
     while not check_coverage(patterns, db) or patterns is []:
         current_kmers = get_all_kmers(db, current_k)
-        candidate_kmers = filter_kmers_by_support(current_kmers, min_support, max_support)
+        kmer_counter = Counter(current_kmers)
+        candidate_kmers = filter_kmers_by_support(kmer_counter, min_support, max_support)
         patterns.extend(candidate_kmers)
         # patterns.extend(current_kmers)
 
@@ -343,7 +352,7 @@ def run_single_experiment(db, data_label, k):
 if __name__ == '__main__':
     dataset = ['activity', 'aslbu', 'context', 'epitope', 'gene', 'news',
                'pioneer', 'question', 'reuters', 'robot', 'skating', 'unix', 'webkb']
-    # dataset = ['aslbu']
+    # dataset = ['auslan2']
 
     for dataset_name in dataset:
         db, data_label, _, _ = datainput(f'RandomCluster/dataset/{dataset_name}.txt')

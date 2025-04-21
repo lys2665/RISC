@@ -212,6 +212,7 @@ class TreeCluster():
             self.one_kmeans_labels = fake_labels
             self.FIRSTKMEANS = False
         topk_pattern = TopkPattern(node.get_x(), fake_labels, 1)
+        print(f"Splitting node with pattern: {topk_pattern.pattern}")
         # 2. split the node
         # 2.1 get the hit_index of top-k pattern
         hit_sequence = topk_pattern.hit_sequence
@@ -285,7 +286,7 @@ def measure_performance(data_label, y_pred):
 if __name__ == '__main__':
     dataset = ['activity', 'aslbu', 'context', 'epitope', 'pioneer',
                'question', 'reuters', 'robot', 'skating', 'unix', 'webkb', 'news']
-    dataset = ['news']
+    dataset = ['epitope']
     # when using pca, it may have little difference when project the feature into 2-d or 3-d.
     tree_results = []
 

@@ -2,7 +2,7 @@ import time
 from collections import Counter
 
 data = []
-file_path= 'dataset_unlabeled/webkb_unlabeled.txt'
+file_path= 'dataset_unlabeled/epitope_unlabeled.txt'
 with open(file_path) as file_object:
     for line in file_object:
      line = line.replace('\n', '')
@@ -118,6 +118,8 @@ result1 = filter_sequence_by_similarity(re, max_threshold)
 num = len(result1)
 if num != 0:
     result = result1
+print(result)
+print(len(result))
 
 def contains_subsequence(sequence, subsequence):
     """检查sequence是否包含subsequence"""
@@ -148,4 +150,3 @@ binary_dataset = convert_to_binary_dataset(data, result)
 end_time = time.time()
 eval_time = end_time - start_time
 print(f"运行时间: {eval_time:.4f}")
-print(binary_dataset)
